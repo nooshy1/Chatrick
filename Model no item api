@@ -47,42 +47,46 @@ plt.title("OSRS Item Price Correlation Heatmap")
 plt.tight_layout()
 plt.show()
 
-# 📀 Step 7: Initial PCA
-pca = PCA(n_components=2)
-reduced = pca.fit_transform(price_matrix.fillna(method='ffill').pct_change().dropna().T)
-pca_df = pd.DataFrame(reduced, columns=['PC1', 'PC2'])
-pca_df['Item'] = list(price_matrix.columns)
+# 📀 Step 7: Iterative PCA with Outlier Removal
+filtered_matrix = price_matrix.copy()
+outliers_exist = True
+iteration = 1
 
-# Mahalanobis distance calculation
-mean_vec = np.mean(reduced, axis=0)
-cov_matrix = np.cov(reduced.T)
-cov_inv = np.linalg.inv(cov_matrix)
-mahal_distances = [distance.mahalanobis(row, mean_vec, cov_inv) for row in reduced]
-pca_df['Mahalanobis'] = mahal_distances
-threshold = np.percentile(mahal_distances, 95)
-pca_df['Outlier'] = pca_df['Mahalanobis'] > threshold
+while outliers_exist:
+    print(f"\nIteration {iteration}: Performing PCA...")
+    pca = PCA(n_components=2)
+    reduced = pca.fit_transform(filtered_matrix.fillna(method='ffill').pct_change().dropna().T)
+    pca_df = pd.DataFrame(reduced, columns=['PC1', 'PC2'])
+    pca_df['Item'] = list(filtered_matrix.columns)
 
-plt.figure(figsize=(12, 8))
-ax = sns.scatterplot(x='PC1', y='PC2', data=pca_df, hue='Outlier', style='Outlier', palette={True: 'red', False: 'blue'}, s=60)
-for i, row in pca_df.iterrows():
-    if row['Outlier']:
-        ax.text(row['PC1'], row['PC2'], row['Item'], fontsize=9, weight='bold')
-plt.title("Initial PCA Outlier Detection with Mahalanobis Distance")
-plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-plt.tight_layout()
-plt.show()
+    # Mahalanobis distance calculation
+    mean_vec = np.mean(reduced, axis=0)
+    cov_matrix = np.cov(reduced.T)
+    cov_inv = np.linalg.inv(cov_matrix)
+    mahal_distances = [distance.mahalanobis(row, mean_vec, cov_inv) for row in reduced]
+    pca_df['Mahalanobis'] = mahal_distances
+    threshold = np.percentile(mahal_distances, 95)
+    pca_df['Outlier'] = pca_df['Mahalanobis'] > threshold
 
-# 🧹 Step 8: Remove outliers and rerun PCA
-filtered_items = pca_df[~pca_df['Outlier']]['Item']
-filtered_matrix = price_matrix[filtered_items]
+    # Visualization
+    plt.figure(figsize=(12, 8))
+    ax = sns.scatterplot(x='PC1', y='PC2', data=pca_df, hue='Outlier', style='Outlier', palette={True: 'red', False: 'blue'}, s=60)
+    for i, row in pca_df.iterrows():
+        if row['Outlier']:
+            ax.text(row['PC1'], row['PC2'], row['Item'], fontsize=9, weight='bold')
+    plt.title(f"PCA Iteration {iteration}: Outlier Detection")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+    plt.tight_layout()
+    plt.show()
 
-# Rerun PCA on filtered matrix
-reduced_filtered = pca.fit_transform(filtered_matrix.fillna(method='ffill').pct_change().dropna().T)
-final_pca_df = pd.DataFrame(reduced_filtered, columns=['PC1', 'PC2'])
-final_pca_df['Item'] = list(filtered_matrix.columns)
+    # Remove outliers
+    if pca_df['Outlier'].any():
+        filtered_items = pca_df[~pca_df['Outlier']]['Item']
+        filtered_matrix = price_matrix[filtered_items]
+        iteration += 1
+    else:
+        outliers_exist = False
 
-plt.figure(figsize=(12, 8))
-sns.scatterplot(x='PC1', y='PC2', data=final_pca_df, s=60, color='green')
-plt.title("Final PCA After Outlier Removal")
-plt.tight_layout()
-plt.show()
+# 🪜 Final core items after outlier removal
+print("\n🔹 Final Core Items After All Outliers Removed:")
+print(pca_df[~pca_df['Outlier']]['Item'].tolist())

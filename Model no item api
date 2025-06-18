@@ -62,7 +62,11 @@ while outliers_exist:
     # Mahalanobis distance calculation
     mean_vec = np.mean(reduced, axis=0)
     cov_matrix = np.cov(reduced.T)
-    cov_inv = np.linalg.inv(cov_matrix)
+    try:
+        cov_inv = np.linalg.inv(cov_matrix)
+    except np.linalg.LinAlgError:
+        print("\n⚠️ Covariance matrix is singular. Terminating PCA loop.")
+        break
     mahal_distances = [distance.mahalanobis(row, mean_vec, cov_inv) for row in reduced]
     pca_df['Mahalanobis'] = mahal_distances
     threshold = np.percentile(mahal_distances, 95)
@@ -72,8 +76,7 @@ while outliers_exist:
     plt.figure(figsize=(12, 8))
     ax = sns.scatterplot(x='PC1', y='PC2', data=pca_df, hue='Outlier', style='Outlier', palette={True: 'red', False: 'blue'}, s=60)
     for i, row in pca_df.iterrows():
-        if row['Outlier']:
-            ax.text(row['PC1'], row['PC2'], row['Item'], fontsize=9, weight='bold')
+        ax.text(row['PC1'], row['PC2'], row['Item'], fontsize=9, weight='bold', color='black' if not row['Outlier'] else 'red')
     plt.title(f"PCA Iteration {iteration}: Outlier Detection")
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     plt.tight_layout()

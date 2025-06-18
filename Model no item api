@@ -1,0 +1,88 @@
+# OSRS Quant Watchlist + Correlation Model (OSRS Wiki API Version)
+
+# 📦 Step 1: Install required packages (Colab will need these)
+!pip install requests pandas scikit-learn matplotlib seaborn
+
+# 📚 Step 2: Import libraries
+import requests
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.ensemble import IsolationForest
+from sklearn.decomposition import PCA
+from scipy.spatial import distance
+import time
+
+# 📊 Step 5: DataFrame & Modeling
+
+df = pd.DataFrame(items)
+features = ['spread', 'volatility', 'momentum']
+
+# Clean and drop rows with NaNs in feature columns
+df_clean = df.dropna(subset=features).copy()
+X = StandardScaler().fit_transform(df_clean[features])
+
+# KMeans clustering
+kmeans = KMeans(n_clusters=3, random_state=42)
+df_clean['cluster'] = kmeans.fit_predict(X)
+
+# Isolation Forest for anomaly detection
+iso = IsolationForest(contamination=0.2, random_state=42)
+df_clean['anomaly'] = iso.fit_predict(X)
+df_clean['anomaly'] = df_clean['anomaly'].map({1: 'normal', -1: 'anomaly'})
+
+print("\n🌟 OSRS Watchlist - Anomalous Items:")
+print(df_clean[df_clean['anomaly'] == 'anomaly'][['id', 'name', 'price', 'low', 'spread']])
+
+# 🔹 Step 6: Correlation Analysis
+price_matrix = pd.concat(price_history.values(), axis=1)
+price_matrix.columns = list(price_history.keys())
+correlation_matrix = price_matrix.pct_change().corr()
+plt.figure(figsize=(12, 10))
+sns.heatmap(correlation_matrix, cmap='coolwarm', xticklabels=True, yticklabels=True)
+plt.title("OSRS Item Price Correlation Heatmap")
+plt.tight_layout()
+plt.show()
+
+# 📀 Step 7: Initial PCA
+pca = PCA(n_components=2)
+reduced = pca.fit_transform(price_matrix.fillna(method='ffill').pct_change().dropna().T)
+pca_df = pd.DataFrame(reduced, columns=['PC1', 'PC2'])
+pca_df['Item'] = list(price_matrix.columns)
+
+# Mahalanobis distance calculation
+mean_vec = np.mean(reduced, axis=0)
+cov_matrix = np.cov(reduced.T)
+cov_inv = np.linalg.inv(cov_matrix)
+mahal_distances = [distance.mahalanobis(row, mean_vec, cov_inv) for row in reduced]
+pca_df['Mahalanobis'] = mahal_distances
+threshold = np.percentile(mahal_distances, 95)
+pca_df['Outlier'] = pca_df['Mahalanobis'] > threshold
+
+plt.figure(figsize=(12, 8))
+ax = sns.scatterplot(x='PC1', y='PC2', data=pca_df, hue='Outlier', style='Outlier', palette={True: 'red', False: 'blue'}, s=60)
+for i, row in pca_df.iterrows():
+    if row['Outlier']:
+        ax.text(row['PC1'], row['PC2'], row['Item'], fontsize=9, weight='bold')
+plt.title("Initial PCA Outlier Detection with Mahalanobis Distance")
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+plt.tight_layout()
+plt.show()
+
+# 🧹 Step 8: Remove outliers and rerun PCA
+filtered_items = pca_df[~pca_df['Outlier']]['Item']
+filtered_matrix = price_matrix[filtered_items]
+
+# Rerun PCA on filtered matrix
+reduced_filtered = pca.fit_transform(filtered_matrix.fillna(method='ffill').pct_change().dropna().T)
+final_pca_df = pd.DataFrame(reduced_filtered, columns=['PC1', 'PC2'])
+final_pca_df['Item'] = list(filtered_matrix.columns)
+
+plt.figure(figsize=(12, 8))
+sns.scatterplot(x='PC1', y='PC2', data=final_pca_df, s=60, color='green')
+plt.title("Final PCA After Outlier Removal")
+plt.tight_layout()
+plt.show()
